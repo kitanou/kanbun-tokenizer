@@ -93,3 +93,11 @@ def test_split_is_work_level_and_stable(tmp_path: Path):
     assert assign_split("w3") == assign_split("w3")
     train_lines = (tmp_path / "out" / "train.txt").read_text(encoding="utf-8").splitlines()
     assert len(train_lines) == len(rec["works"]["train"])
+
+
+def test_clean_org():
+    from kanbun_tokenizer.kanripo import clean_org
+
+    text = ("# -*- mode: mandoku-view -*-\n#+TITLE: 論語\n<pb:KR1h0004_CHANT_001-1a>¶\n** 1 《學而篇第一》\n\n"
+            "1.1子曰：¶\n「學而時習之，¶\n不亦說乎？」<pb:X_002-1a>¶\n\n# src: LAO 1.1\n道可道，¶\n非恒道。\n")
+    assert clean_org(text) == ["子曰：「學而時習之，不亦說乎？」", "道可道，非恒道。"]

@@ -56,3 +56,12 @@ python -m kanbun_tokenizer.manifest split data/manifest.csv --root <corpus-dir> 
 ### 繁体字ソース候補（未確認）
 - Kanripo（漢リポ, https://www.kanripo.org/ ）: GitHub `@kanripo` で公開。リポジトリ単位のライセンスと文字形の確認が必要。サイト表記にCC BY-SA 3.0/4.0の揺れがあるとの報告があり、ShareAlike区分で管理する。
 - 中文維基文庫: 原典はパブリックドメインでも、wikiの編集内容はライセンス対象。原典ごとの権利と、帰属・継承条件の確認が必要。
+
+## Kanripo PoC（2026-10-18）
+
+論語・孟子・尚書・老子（`kanripo/KR1h0004`, `KR1h0001`, `KR1b0001`, `KR5c0057`）を `data/raw/kanripo/` に取得（Git管理外）。
+`python -m kanbun_tokenizer.kanripo` で整形し、`data/manifest.csv` を生成する（`sha256` は整形後ファイルのもの、生データのcommitは `version`）。
+
+- ライセンスは組織単位のCC BY-SA 4.0表記のみ。底本（CHANT／tls）の権利は未確認のため `upstream_rights`・`training_allowed` は `unknown`。通常の `validate` は失敗する。
+- 内部PoCに限り `split --allow-unverified-rights` で警告扱いにできる。出力の `splits.json` は `release_eligible: false` となり、成果物の公開・配布には使えない。
+- 4作品・約33万字のため、語彙16k以上のBPE評価には不十分。ByteLevelでは漢字1字が3バイトなので、小規模データではTPCが1を超える。

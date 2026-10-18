@@ -20,6 +20,8 @@ MANDATORY = [
 ]
 TRISTATE = ("share_alike", "redistribution_allowed", "training_allowed")
 UNCLEAR = {"", "unknown", "未確認"}
+# Problems that --allow-unverified-rights demotes to warnings (internal PoC only).
+RIGHTS_MARKERS = ("unresolved", "training_allowed is not")
 SPLITS = ("train", "validation", "test")
 
 
@@ -94,7 +96,8 @@ def split_works(rows: list[dict], ratios=(0.8, 0.1, 0.1), seed: str = "kanbun-v1
     return out
 
 
-def write_splits(rows: list[dict], root: Path, output_dir: Path, ratios=(0.8, 0.1, 0.1), seed: str = "kanbun-v1") -> dict:
+def write_splits(rows: list[dict], root: Path, output_dir: Path, ratios=(0.8, 0.1, 0.1), seed: str = "kanbun-v1",
+                 release_eligible: bool = True) -> dict:
     """Write one-document-per-line split files and a splits.json recording membership."""
     splits = split_works(rows, ratios, seed)
     by_work: dict[str, list[dict]] = {}
@@ -108,7 +111,7 @@ def write_splits(rows: list[dict], root: Path, output_dir: Path, ratios=(0.8, 0.
                     for line in (root / r["local_path"]).read_text(encoding="utf-8").splitlines():
                         if line.strip():
                             f.write(line + "\n")
-    record = {"seed": seed, "ratios": list(ratios), "works": splits}
+    record = {"seed": seed, "ratios": list(ratios), "release_eligible": release_eligible, "works": splits}
     (output_dir / "splits.json").write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return record
 
@@ -124,15 +127,23 @@ def main() -> None:
     s.add_argument("--root", type=Path, required=True)
     s.add_argument("--output-dir", type=Path, required=True)
     s.add_argument("--seed", default="kanbun-v1")
+    s.add_argument("--allow-unverified-rights", action="store_true",
+                   help="internal PoC only: rights problems become warnings and splits.json is marked release_eligible=false")
     args = parser.parse_args()
     rows = read_manifest(args.manifest)
     problems = validate(rows)
     if args.root:
         problems += verify_files(rows, args.root)
+    waived = getattr(args, "allow_unverified_rights", False)
+    if waived:
+        warnings = [p for p in problems if any(m in p for m in RIGHTS_MARKERS)]
+        problems = [p for p in problems if p not in warnings]
+        for w in warnings:
+            print("WARNING:", w)
     if problems:
         raise SystemExit("\n".join(problems))
     if args.cmd == "split":
-        rec = write_splits(rows, args.root, args.output_dir, seed=args.seed)
+        rec = write_splits(rows, args.root, args.output_dir, seed=args.seed, release_eligible=not waived)
         print({k: len(v) for k, v in rec["works"].items()})
     else:
         print(f"OK: {len(rows)} rows")
