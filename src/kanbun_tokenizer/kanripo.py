@@ -45,6 +45,14 @@ def clean_org(text: str) -> list[str]:
     return paragraphs
 
 
+# Rights notes per Kanripo base edition. Findings, not legal conclusions; see docs/data-policy.md.
+EDITION_RIGHTS = {
+    "CHANT": ("restricted: CHANT (CUHK) licence reportedly bars derivative works without prior written CUHK approval; "
+              "full agreement not read", "no"),
+    "tls": ("unknown: no licence/terms found for the TLS (Thesaurus Linguae Sericae) edition", "unknown"),
+}
+
+
 def _meta(repo: Path) -> dict:
     first = next(iter(sorted(repo.glob("*_001.txt"))), None)
     props: dict[str, str] = {}
@@ -77,9 +85,9 @@ def build(raw_root: Path, out_dir: Path, manifest_path: Path, download_date: str
             "source_url": f"https://github.com/kanripo/{work_id}", "version": sha,
             "downloaded_at": download_date, "sha256": hashlib.sha256(data).hexdigest(),
             "data_license": "CC-BY-SA-4.0 (stated at github.com/kanripo org level; no per-repo LICENSE)",
-            "upstream_rights": "unknown",
+            "upstream_rights": EDITION_RIGHTS.get(edition, ("unknown", "unknown"))[0],
             "attribution": "Kanseki Repository (kanripo.org); base edition: " + edition,
-            "share_alike": "yes", "redistribution_allowed": "unknown", "training_allowed": "unknown",
+            "share_alike": "yes", "redistribution_allowed": "unknown", "training_allowed": EDITION_RIGHTS.get(edition, ("unknown", "unknown"))[1],
             "notes": f"Traditional characters. Base edition '{edition}' rights not verified. "
                      "sha256 is of the cleaned file (see kanripo.clean_org); raw commit in version.",
             "local_path": f"{work_id}.txt",

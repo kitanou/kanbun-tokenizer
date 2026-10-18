@@ -51,9 +51,12 @@ def validate(rows: list[dict]) -> list[str]:
         if sha and not re.fullmatch(r"[0-9a-f]{64}", sha):
             problems.append(f"{where}: sha256 is not 64 hex characters")
         for col in ("data_license", "upstream_rights"):
-            if (row.get(col) or "").strip().lower() in UNCLEAR - {""}:
+            if (row.get(col) or "").strip().lower().split(":")[0] in UNCLEAR - {""}:
                 problems.append(f"{where}: {col} unresolved; unclear rights block inclusion")
-        if (row.get("training_allowed") or "").strip().lower() != "yes":
+        training = (row.get("training_allowed") or "").strip().lower()
+        if training == "no":
+            problems.append(f"{where}: training_allowed is 'no'; exclude this row")
+        elif training != "yes":
             problems.append(f"{where}: training_allowed is not 'yes'")
         if (row.get("share_alike") or "").strip().lower() == "yes" and not (row.get("attribution") or "").strip():
             problems.append(f"{where}: share-alike source requires attribution")
@@ -127,10 +130,13 @@ def main() -> None:
     s.add_argument("--root", type=Path, required=True)
     s.add_argument("--output-dir", type=Path, required=True)
     s.add_argument("--seed", default="kanbun-v1")
+    s.add_argument("--exclude", nargs="*", default=[], metavar="WORK_ID", help="drop these works before validating")
     s.add_argument("--allow-unverified-rights", action="store_true",
                    help="internal PoC only: rights problems become warnings and splits.json is marked release_eligible=false")
     args = parser.parse_args()
     rows = read_manifest(args.manifest)
+    if getattr(args, "exclude", None):
+        rows = [r for r in rows if r["work_id"] not in args.exclude]
     problems = validate(rows)
     if args.root:
         problems += verify_files(rows, args.root)
