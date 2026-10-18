@@ -101,3 +101,19 @@ def test_clean_org():
     text = ("# -*- mode: mandoku-view -*-\n#+TITLE: 論語\n<pb:KR1h0004_CHANT_001-1a>¶\n** 1 《學而篇第一》\n\n"
             "1.1子曰：¶\n「學而時習之，¶\n不亦說乎？」<pb:X_002-1a>¶\n\n# src: LAO 1.1\n道可道，¶\n非恒道。\n")
     assert clean_org(text) == ["子曰：「學而時習之，不亦說乎？」", "道可道，非恒道。"]
+
+
+def test_clean_wikitext():
+    from kanbun_tokenizer.wikitext import clean_wikitext
+
+    prose = ("{{header2\n| title = x\n}}\n<onlyinclude>\n"
+             '<div id="a" style="b">\'\'\'一之一\'\'\'</div>\n'
+             "子曰：「巧言令色，鮮{{另|矣|也}}仁。」-{zh-hans:后; zh-hant:後}-[[論語|學]]\n"
+             "{{另2|《[[尚書|書]]》-{云}-，|注}}\n:commentary\n</onlyinclude>")
+    assert clean_wikitext(prose, "prose") == ["子曰：「巧言令色，鮮矣仁。」後學", "《書》云，"]
+    poem = "===x===\n<poem>\n:關關雎鳩，\n:在河之洲。\n</poem>\n=== 注釋 ===\n* note"
+    assert clean_wikitext(poem, "poem") == ["關關雎鳩，在河之洲。"]
+    plain = "==a==\n===木瓜===\n投我以木瓜。\n\n:《木瓜》，三章，章四句。\n===註解===\n瓊琚:玉"
+    assert clean_wikitext(plain, "poem") == ["投我以木瓜。"]
+    wang = "==一章==\n道可道，非常道，\n:{{*| 注}}\n名可名。"
+    assert clean_wikitext(wang, "main-lines") == ["道可道，非常道，", "名可名。"]

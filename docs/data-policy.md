@@ -104,3 +104,18 @@ python -m kanbun_tokenizer.manifest split data/manifest.csv --root <corpus-dir> 
 
 - 生データは wikitext（`{{header}}`、`<div>` アンカー、`{{*| … }}` 注釈等を含む）。整形処理は未実装。
 - マニフェスト行は未作成。`upstream_rights` は PD-old 表示を根拠に記録するが、ページごとのテンプレート確認後に確定する。
+
+### 中文維基文庫の整形とPoCベースライン（2026-10-18）
+
+`python -m kanbun_tokenizer.wikitext` が wikitext を段落単位のテキストに整形し、`data/manifest-wikisource.csv` を作る。`manifest validate` は4行すべて通過（`ShareAlike` 区分、`training_allowed=yes`はCC BY-SAのライセンス上の判断であり、学習済み成果物へのShareAlikeの影響は未審査）。
+
+整形ルール: ヘッダ・ナビ・アンカー・注釈・脚注・wikitableを除去。`{{另|本文|異文}}` は本文を採用、言語変換マーク `-{zh-hans:…; zh-hant:…}-` は繁体字側を採用。それ以外の字形は変換しない。
+
+| 作品 | 段落数 | 文字数 | 備考 |
+|---|---|---|---|
+| 論語 | 507 | 約2.2万 | 篇名の異体表記（爲／為）は取得時にリダイレクトを除外 |
+| 孟子 | 742 | 約4.5万 | |
+| 詩經 | 310 | 約3.7萬 | 序・無衣（曖昧さ回避）・鳲鳩（表組）は未抽出。305篇以外の異文ページを含む可能性 |
+| 道德經 (王弼本) | 998 | 約0.8万 | 王弼注を除去。`{宀尗}` の未表示字プレースホルダが1箇所残る |
+
+PoCの分割（4作品では作品単位の80/10/10が成立せず、test が空）: train = 孟子・詩經・道德經、validation = 論語。**真のtestセットはまだ無く**、validation を held-out として使った。

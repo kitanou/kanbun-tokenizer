@@ -48,8 +48,10 @@ def clean_org(text: str) -> list[str]:
 # Rights notes per Kanripo base edition. Findings, not legal conclusions; see docs/data-policy.md.
 EDITION_RIGHTS = {
     "CHANT": (
-        "restricted: CHANT (CUHK) licence reportedly bars derivative works without prior written "
-        "CUHK approval; full agreement not read",
+        (
+            "restricted: CHANT (CUHK) licence reportedly bars derivative works without prior written "
+            "CUHK approval; full agreement not read"
+        ),
         "no",
     ),
     "tls": ("unknown: no licence/terms found for the TLS (Thesaurus Linguae Sericae) edition", "unknown"),
