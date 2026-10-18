@@ -9,7 +9,7 @@ import statistics
 import subprocess
 import time
 import unicodedata
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import tokenizers
@@ -100,7 +100,7 @@ def run(train_path: Path, eval_path: Path, output_dir: Path, vocab_sizes: list[i
             "exact_roundtrip_rate": first["exact_roundtrip_rate"],
         })
     result = {
-        "created_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "created_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "commit": git_sha(),
         "environment": environment(),
         "config": {"vocab_sizes": vocab_sizes, "min_frequency": min_frequency,

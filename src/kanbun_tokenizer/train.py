@@ -4,7 +4,14 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from tokenizers import Tokenizer, models, pre_tokenizers, trainers, normalizers, decoders
+from tokenizers import (
+    Tokenizer,
+    decoders,
+    models,
+    normalizers,
+    pre_tokenizers,
+    trainers,
+)
 
 
 def train(input_path: Path, output_path: Path, vocab_size: int, min_frequency: int = 2) -> None:
@@ -19,6 +26,8 @@ def train(input_path: Path, output_path: Path, vocab_size: int, min_frequency: i
         vocab_size=vocab_size,
         min_frequency=min_frequency,
         special_tokens=["[UNK]"],
+        # All 256 byte symbols guarantee lossless round-trip of characters unseen in training.
+        initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
         show_progress=True,
     )
     tokenizer.train([str(input_path)], trainer)

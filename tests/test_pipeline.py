@@ -1,8 +1,9 @@
 from pathlib import Path
 
 from tokenizers import Tokenizer
-from kanbun_tokenizer.train import train
+
 from kanbun_tokenizer.evaluate import evaluate
+from kanbun_tokenizer.train import train
 
 
 def test_train_and_roundtrip(tmp_path: Path):
@@ -40,3 +41,13 @@ def test_baseline_run(tmp_path: Path):
     assert all(r["exact_roundtrip_rate"] == 1.0 for r in result["runs"])
     assert result["dataset"]["eval"]["sha256"]
     assert (tmp_path / "out" / "baseline.json").exists()
+
+
+def test_unseen_characters_roundtrip(tmp_path: Path):
+    source = tmp_path / "corpus.txt"
+    source.write_text("學而時習之\n", encoding="utf-8")
+    tokenizer_path = tmp_path / "tokenizer.json"
+    train(source, tokenizer_path, vocab_size=300, min_frequency=1)
+    tokenizer = Tokenizer.from_file(str(tokenizer_path))
+    text = "道可道，非常道。𠮷"
+    assert tokenizer.decode(tokenizer.encode(text).ids) == text
