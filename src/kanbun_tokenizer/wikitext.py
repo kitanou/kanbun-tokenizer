@@ -1,7 +1,7 @@
 """Turn zh.wikisource wikitext into plain text paragraphs and build the corpus manifest.
 
 Only the base text is kept: headers, navigation, anchors, commentary, footnotes and
-templates are dropped. Character forms are left exactly as written (no 繁簡/異体字
+templates are dropped; critical-edition marks （…） are deleted and 〔…〕/{…} unwrapped. Character forms are left exactly as written (no 繁簡/異体字
 conversion); language-converter markup keeps the traditional (zh-hant) variant.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ _REF = re.compile(r"<ref[^>]*?(?:/>|>.*?</ref>)", re.DOTALL)
 
 COMMENTARY_HEADINGS = {"註解", "註釋", "注釋", "毛詩序", "魯詩說", "齊詩說", "齐诗说", "韓詩說", "三家詩說"}
 _FOOTER = re.compile(r"^《[^》]*》[，,].*章")
-_ANCHOR_LINE = re.compile(r"^<div id=[^>]*>.*</div>\s*$")
+_ANCHOR_LINE = re.compile(r"(?m)^<div id=[^>]*>.*</div>[ \t]*$")
 
 
 def _convert(m: re.Match) -> str:
@@ -98,13 +98,22 @@ def _inline(text: str) -> str:
     return text.replace("'''", "").replace("''", "")
 
 
+_PAREN = re.compile(r"（[^（）]*）")
+
+
+def _editorial(text: str) -> str:
+    """Critical-edition marks: （…）= to delete (variant/gloss), 〔…〕 and {…} = supplied text (kept)."""
+    text = _PAREN.sub("", text)
+    return re.sub(r"[〔〕{}\[\]]", "", text)
+
+
 def _only_include(text: str) -> str:
     m = re.search(r"<onlyinclude>(.*?)</onlyinclude>", text, re.DOTALL)
     return m.group(1) if m else text
 
 
 def clean_wikitext(text: str, mode: str) -> list[str]:
-    """mode: 'prose' (論語/孟子), 'poem' (詩經: <poem> blocks), 'main-lines' (drop ':' commentary lines)."""
+    """mode: 'prose' (論語/孟子), 'poem' (詩經), 'main-lines' (drop ':' commentary lines), 'list' (周易)."""
     text = re.sub(r"\{\|.*?\|\}", "", text, flags=re.DOTALL)  # wikitables (e.g. a poem laid out as a table) are dropped
     if mode == "poem":
         blocks = re.findall(r"<poem[^>]*>(.*?)</poem>", _only_include(text), re.DOTALL)
@@ -126,23 +135,32 @@ def clean_wikitext(text: str, mode: str) -> list[str]:
             blocks = ["\n".join(current)] if current else []
         paragraphs = []
         for block in blocks:
-            lines = [_inline(l).strip(" :　\t") for l in block.splitlines()]
+            lines = [_editorial(_inline(l)).strip(" :　\t") for l in block.splitlines()]
             joined = "".join(l for l in lines if l)
             if joined:
                 paragraphs.append(joined)
         return [unicodedata.normalize("NFC", p) for p in paragraphs]
+    if mode == "list":  # 周易: main text sits in '*'/'#' list items; pages without lists fall back to prose
+        out = []
+        for raw in _COMMENT.sub("", text).splitlines():
+            line = raw.strip()
+            if not line.startswith(("*", "#")):
+                continue
+            cleaned = _editorial(_inline(line.lstrip("*#: "))).strip(" 　\t")
+            if cleaned:
+                out.append(unicodedata.normalize("NFC", cleaned))
+        return out or clean_wikitext(text, "prose")
     body = _only_include(text) if mode == "prose" else text
-    body = _COMMENT.sub("", body)
+    body = _ANCHOR_LINE.sub("", _COMMENT.sub("", body))
+    body = _inline(body)  # whole body at once: headers and notes can span lines
     lines = []
     for raw in body.splitlines():
         line = raw.strip()
-        if not line or line.startswith(("=", "*", "#", "{|", "|", "!", "}")) or _ANCHOR_LINE.match(line):
+        if not line or line.startswith(("=", "*", "#", "{|", "|", "!", "}", ";")):
             continue
-        if mode == "main-lines" and line.startswith(":"):
+        if line.startswith(":") and mode in {"prose", "main-lines"}:
             continue
-        if mode == "prose" and line.startswith(":"):
-            continue
-        cleaned = _inline(line).strip(" 　\t")
+        cleaned = _editorial(line).strip(" 　\t")
         if cleaned:
             lines.append(unicodedata.normalize("NFC", cleaned))
     return lines
@@ -153,6 +171,16 @@ WORKS = {  # work directory -> (work_id, cleaning mode)
     "孟子": ("zhws-mengzi", "prose"),
     "詩經": ("zhws-shijing", "poem"),
     "道德經 (王弼本)": ("zhws-daodejing-wangbi", "main-lines"),
+    "莊子": ("zhws-zhuangzi", "prose"),
+    "荀子": ("zhws-xunzi", "prose"),
+    "墨子": ("zhws-mozi", "prose"),
+    "禮記": ("zhws-liji", "prose"),
+    "呂氏春秋": ("zhws-lushichunqiu", "prose"),
+    "淮南子": ("zhws-huainanzi", "prose"),
+    "列子": ("zhws-liezi", "prose"),
+    "春秋左氏傳": ("zhws-zuozhuan", "prose"),
+    "周易": ("zhws-zhouyi", "list"),
+    "尚書": ("zhws-shangshu", "prose"),
 }
 
 
@@ -160,6 +188,8 @@ def build(raw_root: Path, out_dir: Path, manifest_path: Path, fetch_date: str) -
     out_dir.mkdir(parents=True, exist_ok=True)
     rows, report = [], []
     for folder, (work_id, mode) in WORKS.items():
+        if not (raw_root / folder).is_dir():
+            continue
         pages = [json.loads(f.read_text(encoding="utf-8")) for f in sorted((raw_root / folder).glob("*.json"))]
         paragraphs, empty, pd_old = [], [], 0
         for page in pages:
@@ -181,7 +211,7 @@ def build(raw_root: Path, out_dir: Path, manifest_path: Path, fetch_date: str) -
             "attribution": "Chinese Wikisource contributors (page histories at zh.wikisource.org); revisions in fetch log",
             "share_alike": "yes", "redistribution_allowed": "yes", "training_allowed": "yes",
             "notes": f"Cleaned with wikitext.clean_wikitext(mode={mode}); {len(paragraphs)} paragraphs; "
-                     f"pages with no extracted text: {len(empty)}. Effect of ShareAlike on trained artifacts not reviewed.",
+                     f"pages with no extracted text: {len(empty)}. Editorial （…） removed, 〔…〕 and braces unwrapped (edition convention assumed, not verified per work). Effect of ShareAlike on trained artifacts not reviewed.",
             "local_path": f"{work_id}.txt",
         })
         report.append((work_id, len(pages), len(paragraphs), len(data.decode().replace("\n", "")), empty[:5], len(empty)))

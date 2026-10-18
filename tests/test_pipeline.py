@@ -117,3 +117,12 @@ def test_clean_wikitext():
     assert clean_wikitext(plain, "poem") == ["投我以木瓜。"]
     wang = "==一章==\n道可道，非常道，\n:{{*| 注}}\n名可名。"
     assert clean_wikitext(wang, "main-lines") == ["道可道，非常道，", "名可名。"]
+
+
+def test_clean_wikitext_editorial_and_multiline_header():
+    from kanbun_tokenizer.wikitext import clean_wikitext
+
+    text = "{{Header|title=x\n|notes=y}}\n自（今）〔令〕單，厥土{惟}白壤。\n"
+    assert clean_wikitext(text, "prose") == ["自令單，厥土惟白壤。"]
+    assert clean_wikitext("==乾==\n大哉乾元。", "list") == ["大哉乾元。"]  # no list items -> prose fallback
+    assert clean_wikitext("*<span style='x'>'''乾''' ：元亨。</span>", "list") == ["乾 ：元亨。"]
