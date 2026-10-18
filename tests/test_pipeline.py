@@ -127,3 +127,24 @@ def test_clean_wikitext_editorial_and_multiline_header():
     assert clean_wikitext(text, "prose") == ["自令單，厥土惟白壤。"]
     assert clean_wikitext("==乾==\n大哉乾元。", "list") == ["大哉乾元。"]  # no list items -> prose fallback
     assert clean_wikitext("*<span style='x'>'''乾''' ：元亨。</span>", "list") == ["乾 ：元亨。"]
+
+
+def test_crossval_leave_one_work_out(tmp_path: Path):
+    import csv
+
+    from kanbun_tokenizer.crossval import run
+    from kanbun_tokenizer.manifest import COLUMNS
+
+    rows = [_row(f"w{i}", "學而時習之，不亦說乎。\n知之為知之，不知為不知。\n" * 3, tmp_path) for i in range(4)]
+    for i, r in enumerate(rows):  # distinct hashes so duplicate-content validation passes
+        (tmp_path / f"w{i}.txt").write_text(f"文{i}。" * 20 + "\n道可道，非常道。\n", encoding="utf-8")
+        import hashlib
+        r["sha256"] = hashlib.sha256((tmp_path / f"w{i}.txt").read_bytes()).hexdigest()
+    manifest = tmp_path / "m.csv"
+    with manifest.open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=COLUMNS)
+        w.writeheader()
+        w.writerows(rows)
+    res = run(manifest, tmp_path, [300], ["a", "b"])
+    assert set(res["lowo"][300]["per_work"]) == {f"w{i}" for i in range(4)}
+    assert res["lowo"][300]["tpc"]["n"] == 4 and res["roundtrip_all_exact"]
