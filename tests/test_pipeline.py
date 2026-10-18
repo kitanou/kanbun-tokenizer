@@ -51,3 +51,45 @@ def test_unseen_characters_roundtrip(tmp_path: Path):
     tokenizer = Tokenizer.from_file(str(tokenizer_path))
     text = "道可道，非常道。𠮷"
     assert tokenizer.decode(tokenizer.encode(text).ids) == text
+
+
+def _row(work_id, text, root, **over):
+    import hashlib
+    (root / f"{work_id}.txt").write_text(text, encoding="utf-8")
+    row = {
+        "dataset_id": "d", "work_id": work_id, "title": work_id, "source_url": "https://example.org",
+        "version": "v1", "downloaded_at": "2026-01-01",
+        "sha256": hashlib.sha256(text.encode()).hexdigest(), "data_license": "CC0-1.0",
+        "upstream_rights": "public domain", "attribution": "", "share_alike": "no",
+        "redistribution_allowed": "yes", "training_allowed": "yes", "notes": "",
+        "local_path": f"{work_id}.txt",
+    }
+    row.update(over)
+    return row
+
+
+def test_manifest_validation(tmp_path: Path):
+    from kanbun_tokenizer.manifest import validate, verify_files
+
+    good = _row("a", "學而\n", tmp_path)
+    assert validate([good]) == [] and verify_files([good], tmp_path) == []
+    bad = _row("b", "道\n", tmp_path, upstream_rights="unknown", training_allowed="unknown", sha256="xyz")
+    problems = " ".join(validate([bad]))
+    assert "unresolved" in problems and "training_allowed" in problems and "sha256" in problems
+    dup = dict(good)
+    assert any("duplicate" in p for p in validate([good, dup]))
+    (tmp_path / "a.txt").write_text("changed\n", encoding="utf-8")
+    assert verify_files([good], tmp_path)
+
+
+def test_split_is_work_level_and_stable(tmp_path: Path):
+    from kanbun_tokenizer.manifest import assign_split, write_splits
+
+    rows = [_row(f"w{i}", f"文{i}\n", tmp_path) for i in range(40)]
+    rec = write_splits(rows, tmp_path, tmp_path / "out")
+    all_works = [w for ws in rec["works"].values() for w in ws]
+    assert sorted(all_works) == sorted(r["work_id"] for r in rows)  # no work in two splits
+    assert all(rec["works"][s] for s in ("train", "validation", "test"))
+    assert assign_split("w3") == assign_split("w3")
+    train_lines = (tmp_path / "out" / "train.txt").read_text(encoding="utf-8").splitlines()
+    assert len(train_lines) == len(rec["works"]["train"])

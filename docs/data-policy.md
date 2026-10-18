@@ -35,3 +35,13 @@ https://github.com/ShiraTheMogul/fanyahanwen-corpus
 - Gitには取得手順、マニフェスト、ハッシュ、ライセンス確認記録のみを置く。
 - サンプル文は出典・権利状態が明確なもの、または自作の短文に限定。
 - 不明なライセンスは「未確認」とし、採用・配布前に解決する。
+
+## マニフェスト検証と分割
+
+```bash
+python -m kanbun_tokenizer.manifest validate data/manifest.csv --root <corpus-dir>
+python -m kanbun_tokenizer.manifest split data/manifest.csv --root <corpus-dir> --output-dir artifacts/splits
+```
+
+- 必須項目欠落、SHA-256形式不正、権利が `unknown`/未確認、`training_allowed` が `yes` でない行、重複（work_id・SHA-256）は検証エラーとなり、分割は実行されない。
+- 分割は `seed:work_id` のハッシュによる作品単位の決定的割当（既定 80/10/10）。作品の追加で既存作品の割当は変わらない。結果は `splits.json` に記録される。
