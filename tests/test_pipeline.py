@@ -25,3 +25,18 @@ def test_evaluation_report(tmp_path: Path):
     assert output.exists()
     assert result["exact_roundtrip_rate"] == 1.0
     assert result["tokens_per_character"] is not None
+
+
+def test_baseline_run(tmp_path: Path):
+    from kanbun_tokenizer.baseline import run
+
+    train_file = tmp_path / "train.txt"
+    eval_file = tmp_path / "eval.txt"
+    train_file.write_text("學而時習之，不亦說乎。\n知之為知之，不知為不知，是知也。\n", encoding="utf-8")
+    eval_file.write_text("道可道，非常道。\n", encoding="utf-8")
+    result = run(train_file, eval_file, tmp_path / "out", [300, 400], min_frequency=1, repeats=2)
+    assert [r["method"] for r in result["runs"]] == ["char", "bpe", "bpe"]
+    assert result["runs"][0]["tokens_per_character"] == 1.0
+    assert all(r["exact_roundtrip_rate"] == 1.0 for r in result["runs"])
+    assert result["dataset"]["eval"]["sha256"]
+    assert (tmp_path / "out" / "baseline.json").exists()
