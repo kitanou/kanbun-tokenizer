@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.py[cod]
+data/raw/
+data/processed/
+data/external/
+artifacts/*
+!artifacts/.gitkeep
+.DS_Store
+.env
+
+# Generated package metadata
+*.egg-info/
+
+# Generated package metadata
+*.egg-info/
