@@ -32,6 +32,17 @@ def git_sha() -> str | None:
     return out.stdout.strip()
 
 
+def git_dirty() -> bool | None:
+    """True if tracked files differ from HEAD or untracked (non-ignored) files exist."""
+    try:
+        out = subprocess.run(
+            ["git", "status", "--porcelain"], capture_output=True, text=True, check=True
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return bool(out.stdout.strip())
+
+
 def environment() -> dict:
     return {
         "python": platform.python_version(),
@@ -102,6 +113,7 @@ def run(train_path: Path, eval_path: Path, output_dir: Path, vocab_sizes: list[i
     result = {
         "created_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "commit": git_sha(),
+        "dirty": git_dirty(),
         "environment": environment(),
         "config": {"vocab_sizes": vocab_sizes, "min_frequency": min_frequency,
                    "repeats": repeats, "normalizer": "NFC"},

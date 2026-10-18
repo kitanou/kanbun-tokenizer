@@ -40,6 +40,7 @@ def test_baseline_run(tmp_path: Path):
     assert result["runs"][0]["tokens_per_character"] == 1.0
     assert all(r["exact_roundtrip_rate"] == 1.0 for r in result["runs"])
     assert result["dataset"]["eval"]["sha256"]
+    assert result["dirty"] in (True, False, None)
     assert (tmp_path / "out" / "baseline.json").exists()
 
 
