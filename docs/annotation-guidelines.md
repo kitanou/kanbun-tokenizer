@@ -100,3 +100,11 @@ python -m kanbun_tokenizer.candidates --validate data/eval/functionwords/example
 - 候補は現象×パターン×作品で層化し、ハッシュ順で決定的に抽出する（`--seed`、`--per-pattern-per-work`、`--per-pattern`）。
 - 抽出は文字列一致のみで、用法の判定はしない。候補件数は偏りがあるので、少ないパターンは作品を増やして補う。
 - 処理済みテキストと `*.sources.tsv`（行→ページ・oldid）は `python -m kanbun_tokenizer.wikitext` が生成する。
+
+## 9. パイロット下書き（10件）
+
+`data/eval/functionwords/drafts-pilot10.jsonl`: 論語・呂氏春秋（held-out）から8パターンを選び、`draft_annotation` に注釈案を付けた10件（うち4件が反例）。
+
+- **これは注釈ではない**。`status` は `candidate`、`annotation` は `null` のまま。案は Claude が作ったもので、文法書・辞書などの根拠は確認していない。
+- `proposed_expectation` はすべて `no_expectation`。`separable`／`unit` には根拠（`reference`）が必須で、その確認を人間が行うまで置けないため。
+- 人間は `draft_annotation` を見直し、確定したものを `annotation`（`annotator`・`annotated_at`・必要なら `reference` を追加）に移して `status: annotated` にする。
