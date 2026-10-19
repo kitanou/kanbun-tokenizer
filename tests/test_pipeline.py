@@ -161,3 +161,43 @@ def test_function_word_classification(tmp_path: Path):
     row = result["否定"]["不"]
     assert row["n"] == 1 and row["isolated"] + row["merged"] + row["straddle"] + row["split"] == 1
     assert result["疑問・反語"]["耶"]["split"] == 1  # unseen character is cut into byte-level pieces
+
+
+def test_candidates_extract_and_validate(tmp_path: Path):
+    import csv
+    import json
+
+    from kanbun_tokenizer.candidates import (
+        extract,
+        find_matches,
+        sentences,
+        validate_record,
+    )
+    from kanbun_tokenizer.manifest import COLUMNS
+
+    text = "子曰：「學而時習之，不亦說乎？有朋自遠方來，不亦樂乎？」人不知而不慍，不亦君子乎？\n何陋之有？豈不然哉。\n"
+    (tmp_path / "w1.txt").write_text(text, encoding="utf-8")
+    (tmp_path / "w1.sources.tsv").write_text("line\tpage_title\toldid\n1\tP\t7\n2\tP\t7\n", encoding="utf-8")
+    row = _row("w1", text, tmp_path)
+    manifest = tmp_path / "m.csv"
+    with manifest.open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=COLUMNS)
+        w.writeheader()
+        w.writerow(row)
+    assert [s for _, s in sentences("甲。乙？丙")] == ["甲。", "乙？", "丙"]
+    assert any(m["pattern"] == "不亦…乎" for m in find_matches("不亦說乎？"))
+    cands = extract(manifest, tmp_path, None, 3, 30, 2, 60, "seed")
+    assert cands and all(not validate_record(c) for c in cands)
+    assert cands[0]["provenance"]["oldid"] == "7" and cands[0]["corpus_split"] == "unknown"
+    again = extract(manifest, tmp_path, None, 3, 30, 2, 60, "seed")
+    assert [c["id"] for c in cands] == [c["id"] for c in again]  # deterministic
+
+    rec = json.loads(json.dumps(cands[0]))
+    rec["status"] = "annotated"
+    assert "status requires annotation" in validate_record(rec)
+    rec["annotation"] = {"function": "other", "is_target_use": True, "expectation": "unit", "rationale": "x",
+                         "annotator": "a", "annotated_at": "2026-01-01", "ambiguity": "low"}
+    problems = validate_record(rec)
+    assert any("reference" in p for p in problems)
+    rec["span"] = [0, 1]
+    assert any("span" in p for p in validate_record(rec))

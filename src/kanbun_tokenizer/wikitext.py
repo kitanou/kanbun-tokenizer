@@ -191,15 +191,20 @@ def build(raw_root: Path, out_dir: Path, manifest_path: Path, fetch_date: str) -
         if not (raw_root / folder).is_dir():
             continue
         pages = [json.loads(f.read_text(encoding="utf-8")) for f in sorted((raw_root / folder).glob("*.json"))]
-        paragraphs, empty, pd_old = [], [], 0
+        paragraphs, empty, pd_old, origin = [], [], 0, []
         for page in pages:
             got = clean_wikitext(page["wikitext"], mode)
             if not got:
                 empty.append(page["title"])
             paragraphs += got
+            origin += [(page["title"], page["oldid"])] * len(got)
             pd_old += bool(re.search(r"\{\{\s*PD-old", page["wikitext"], re.IGNORECASE))
         data = ("\n".join(paragraphs) + "\n").encode("utf-8")
         (out_dir / f"{work_id}.txt").write_bytes(data)
+        # line N (1-based) of the text file came from this wiki page revision
+        (out_dir / f"{work_id}.sources.tsv").write_text(
+            "line\tpage_title\toldid\n" + "".join(f"{i}\t{t}\t{o}\n" for i, (t, o) in enumerate(origin, 1)),
+            encoding="utf-8")
         title = folder.split(" ")[0]
         rows.append({
             "dataset_id": "zh-wikisource", "work_id": work_id, "title": title,
