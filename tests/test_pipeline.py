@@ -148,3 +148,16 @@ def test_crossval_leave_one_work_out(tmp_path: Path):
     res = run(manifest, tmp_path, [300], ["a", "b"])
     assert set(res["lowo"][300]["per_work"]) == {f"w{i}" for i in range(4)}
     assert res["lowo"][300]["tpc"]["n"] == 4 and res["roundtrip_all_exact"]
+
+
+def test_function_word_classification(tmp_path: Path):
+    from kanbun_tokenizer.functionwords import analyse
+
+    source = tmp_path / "corpus.txt"
+    source.write_text("不亦說乎。不亦樂乎。" * 30 + "\n", encoding="utf-8")
+    tok = tmp_path / "tok.json"
+    train(source, tok, vocab_size=300, min_frequency=1)
+    result = analyse(tok, ["不亦說乎。", "耶"])
+    row = result["否定"]["不"]
+    assert row["n"] == 1 and row["isolated"] + row["merged"] + row["straddle"] + row["split"] == 1
+    assert result["疑問・反語"]["耶"]["split"] == 1  # unseen character is cut into byte-level pieces
