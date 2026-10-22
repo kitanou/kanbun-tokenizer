@@ -3,14 +3,14 @@
 ## M0 — Project foundation
 - [ ] README、技術設計、データ方針を確定
 - [ ] Python package / CLI / tests / CI
-- [ ] データマニフェストのスキーマを定義
+- [x] データマニフェストのスキーマを定義（`kanbun_tokenizer.manifest`）
 - [ ] サンプルでtrain/evaluateが実行できること
 
 ## M1 — Reproducible baseline
 - [ ] 利用条件が明確な初期コーパスを選定
-- [ ] 文献ID・重複除去・作品単位split
-- [ ] 16k / 32k / 64k BPEの学習
-- [ ] 文字単位対照群と共通評価器
+- [x] 文献ID・重複除去・作品単位split（実コーパスでの適用は未了）
+- [x] 16k / 32k / 64k BPEの学習（`kanbun_tokenizer.baseline`）
+- [x] 文字単位対照群と共通評価器
 - [ ] 実験環境・設定・データ版をレポートに記録
 
 ## M2 — Classical Chinese linguistic analysis

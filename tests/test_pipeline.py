@@ -1,8 +1,9 @@
 from pathlib import Path
 
 from tokenizers import Tokenizer
-from kanbun_tokenizer.train import train
+
 from kanbun_tokenizer.evaluate import evaluate
+from kanbun_tokenizer.train import train
 
 
 def test_train_and_roundtrip(tmp_path: Path):
@@ -25,3 +26,178 @@ def test_evaluation_report(tmp_path: Path):
     assert output.exists()
     assert result["exact_roundtrip_rate"] == 1.0
     assert result["tokens_per_character"] is not None
+
+
+def test_baseline_run(tmp_path: Path):
+    from kanbun_tokenizer.baseline import run
+
+    train_file = tmp_path / "train.txt"
+    eval_file = tmp_path / "eval.txt"
+    train_file.write_text("學而時習之，不亦說乎。\n知之為知之，不知為不知，是知也。\n", encoding="utf-8")
+    eval_file.write_text("道可道，非常道。\n", encoding="utf-8")
+    result = run(train_file, eval_file, tmp_path / "out", [300, 400], min_frequency=1, repeats=2)
+    assert [r["method"] for r in result["runs"]] == ["char", "bpe", "bpe"]
+    assert result["runs"][0]["tokens_per_character"] == 1.0
+    assert all(r["exact_roundtrip_rate"] == 1.0 for r in result["runs"])
+    assert result["dataset"]["eval"]["sha256"]
+    assert result["dirty"] in (True, False, None)
+    assert (tmp_path / "out" / "baseline.json").exists()
+
+
+def test_unseen_characters_roundtrip(tmp_path: Path):
+    source = tmp_path / "corpus.txt"
+    source.write_text("學而時習之\n", encoding="utf-8")
+    tokenizer_path = tmp_path / "tokenizer.json"
+    train(source, tokenizer_path, vocab_size=300, min_frequency=1)
+    tokenizer = Tokenizer.from_file(str(tokenizer_path))
+    text = "道可道，非常道。𠮷"
+    assert tokenizer.decode(tokenizer.encode(text).ids) == text
+
+
+def _row(work_id, text, root, **over):
+    import hashlib
+    (root / f"{work_id}.txt").write_text(text, encoding="utf-8")
+    row = {
+        "dataset_id": "d", "work_id": work_id, "title": work_id, "source_url": "https://example.org",
+        "version": "v1", "downloaded_at": "2026-01-01",
+        "sha256": hashlib.sha256(text.encode()).hexdigest(), "data_license": "CC0-1.0",
+        "upstream_rights": "public domain", "attribution": "", "share_alike": "no",
+        "redistribution_allowed": "yes", "training_allowed": "yes", "notes": "",
+        "local_path": f"{work_id}.txt",
+    }
+    row.update(over)
+    return row
+
+
+def test_manifest_validation(tmp_path: Path):
+    from kanbun_tokenizer.manifest import validate, verify_files
+
+    good = _row("a", "學而\n", tmp_path)
+    assert validate([good]) == [] and verify_files([good], tmp_path) == []
+    bad = _row("b", "道\n", tmp_path, upstream_rights="unknown", training_allowed="unknown", sha256="xyz")
+    problems = " ".join(validate([bad]))
+    assert "unresolved" in problems and "training_allowed" in problems and "sha256" in problems
+    dup = dict(good)
+    assert any("duplicate" in p for p in validate([good, dup]))
+    (tmp_path / "a.txt").write_text("changed\n", encoding="utf-8")
+    assert verify_files([good], tmp_path)
+
+
+def test_split_is_work_level_and_stable(tmp_path: Path):
+    from kanbun_tokenizer.manifest import assign_split, write_splits
+
+    rows = [_row(f"w{i}", f"文{i}\n", tmp_path) for i in range(40)]
+    rec = write_splits(rows, tmp_path, tmp_path / "out")
+    all_works = [w for ws in rec["works"].values() for w in ws]
+    assert sorted(all_works) == sorted(r["work_id"] for r in rows)  # no work in two splits
+    assert all(rec["works"][s] for s in ("train", "validation", "test"))
+    assert assign_split("w3") == assign_split("w3")
+    train_lines = (tmp_path / "out" / "train.txt").read_text(encoding="utf-8").splitlines()
+    assert len(train_lines) == len(rec["works"]["train"])
+
+
+def test_clean_org():
+    from kanbun_tokenizer.kanripo import clean_org
+
+    text = ("# -*- mode: mandoku-view -*-\n#+TITLE: 論語\n<pb:KR1h0004_CHANT_001-1a>¶\n** 1 《學而篇第一》\n\n"
+            "1.1子曰：¶\n「學而時習之，¶\n不亦說乎？」<pb:X_002-1a>¶\n\n# src: LAO 1.1\n道可道，¶\n非恒道。\n")
+    assert clean_org(text) == ["子曰：「學而時習之，不亦說乎？」", "道可道，非恒道。"]
+
+
+def test_clean_wikitext():
+    from kanbun_tokenizer.wikitext import clean_wikitext
+
+    prose = ("{{header2\n| title = x\n}}\n<onlyinclude>\n"
+             '<div id="a" style="b">\'\'\'一之一\'\'\'</div>\n'
+             "子曰：「巧言令色，鮮{{另|矣|也}}仁。」-{zh-hans:后; zh-hant:後}-[[論語|學]]\n"
+             "{{另2|《[[尚書|書]]》-{云}-，|注}}\n:commentary\n</onlyinclude>")
+    assert clean_wikitext(prose, "prose") == ["子曰：「巧言令色，鮮矣仁。」後學", "《書》云，"]
+    poem = "===x===\n<poem>\n:關關雎鳩，\n:在河之洲。\n</poem>\n=== 注釋 ===\n* note"
+    assert clean_wikitext(poem, "poem") == ["關關雎鳩，在河之洲。"]
+    plain = "==a==\n===木瓜===\n投我以木瓜。\n\n:《木瓜》，三章，章四句。\n===註解===\n瓊琚:玉"
+    assert clean_wikitext(plain, "poem") == ["投我以木瓜。"]
+    wang = "==一章==\n道可道，非常道，\n:{{*| 注}}\n名可名。"
+    assert clean_wikitext(wang, "main-lines") == ["道可道，非常道，", "名可名。"]
+
+
+def test_clean_wikitext_editorial_and_multiline_header():
+    from kanbun_tokenizer.wikitext import clean_wikitext
+
+    text = "{{Header|title=x\n|notes=y}}\n自（今）〔令〕單，厥土{惟}白壤。\n"
+    assert clean_wikitext(text, "prose") == ["自令單，厥土惟白壤。"]
+    assert clean_wikitext("==乾==\n大哉乾元。", "list") == ["大哉乾元。"]  # no list items -> prose fallback
+    assert clean_wikitext("*<span style='x'>'''乾''' ：元亨。</span>", "list") == ["乾 ：元亨。"]
+
+
+def test_crossval_leave_one_work_out(tmp_path: Path):
+    import csv
+
+    from kanbun_tokenizer.crossval import run
+    from kanbun_tokenizer.manifest import COLUMNS
+
+    rows = [_row(f"w{i}", "學而時習之，不亦說乎。\n知之為知之，不知為不知。\n" * 3, tmp_path) for i in range(4)]
+    for i, r in enumerate(rows):  # distinct hashes so duplicate-content validation passes
+        (tmp_path / f"w{i}.txt").write_text(f"文{i}。" * 20 + "\n道可道，非常道。\n", encoding="utf-8")
+        import hashlib
+        r["sha256"] = hashlib.sha256((tmp_path / f"w{i}.txt").read_bytes()).hexdigest()
+    manifest = tmp_path / "m.csv"
+    with manifest.open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=COLUMNS)
+        w.writeheader()
+        w.writerows(rows)
+    res = run(manifest, tmp_path, [300], ["a", "b"])
+    assert set(res["lowo"][300]["per_work"]) == {f"w{i}" for i in range(4)}
+    assert res["lowo"][300]["tpc"]["n"] == 4 and res["roundtrip_all_exact"]
+
+
+def test_function_word_classification(tmp_path: Path):
+    from kanbun_tokenizer.functionwords import analyse
+
+    source = tmp_path / "corpus.txt"
+    source.write_text("不亦說乎。不亦樂乎。" * 30 + "\n", encoding="utf-8")
+    tok = tmp_path / "tok.json"
+    train(source, tok, vocab_size=300, min_frequency=1)
+    result = analyse(tok, ["不亦說乎。", "耶"])
+    row = result["否定"]["不"]
+    assert row["n"] == 1 and row["isolated"] + row["merged"] + row["straddle"] + row["split"] == 1
+    assert result["疑問・反語"]["耶"]["split"] == 1  # unseen character is cut into byte-level pieces
+
+
+def test_candidates_extract_and_validate(tmp_path: Path):
+    import csv
+    import json
+
+    from kanbun_tokenizer.candidates import (
+        extract,
+        find_matches,
+        sentences,
+        validate_record,
+    )
+    from kanbun_tokenizer.manifest import COLUMNS
+
+    text = "子曰：「學而時習之，不亦說乎？有朋自遠方來，不亦樂乎？」人不知而不慍，不亦君子乎？\n何陋之有？豈不然哉。\n"
+    (tmp_path / "w1.txt").write_text(text, encoding="utf-8")
+    (tmp_path / "w1.sources.tsv").write_text("line\tpage_title\toldid\n1\tP\t7\n2\tP\t7\n", encoding="utf-8")
+    row = _row("w1", text, tmp_path)
+    manifest = tmp_path / "m.csv"
+    with manifest.open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=COLUMNS)
+        w.writeheader()
+        w.writerow(row)
+    assert [s for _, s in sentences("甲。乙？丙")] == ["甲。", "乙？", "丙"]
+    assert any(m["pattern"] == "不亦…乎" for m in find_matches("不亦說乎？"))
+    cands = extract(manifest, tmp_path, None, 3, 30, 2, 60, "seed")
+    assert cands and all(not validate_record(c) for c in cands)
+    assert cands[0]["provenance"]["oldid"] == "7" and cands[0]["corpus_split"] == "unknown"
+    again = extract(manifest, tmp_path, None, 3, 30, 2, 60, "seed")
+    assert [c["id"] for c in cands] == [c["id"] for c in again]  # deterministic
+
+    rec = json.loads(json.dumps(cands[0]))
+    rec["status"] = "annotated"
+    assert "status requires annotation" in validate_record(rec)
+    rec["annotation"] = {"function": "other", "is_target_use": True, "expectation": "unit", "rationale": "x",
+                         "annotator": "a", "annotated_at": "2026-01-01", "ambiguity": "low"}
+    problems = validate_record(rec)
+    assert any("reference" in p for p in problems)
+    rec["span"] = [0, 1]
+    assert any("span" in p for p in validate_record(rec))
